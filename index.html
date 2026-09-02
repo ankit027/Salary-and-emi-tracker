@@ -84,7 +84,10 @@ table{width:100%;min-width:720px;border-collapse:collapse}th,td{padding:11px;bor
   </div>
   <div class="panel">
    <h2>➕ Add Salary</h2>
-   <div class="grid"><input type="month" id="salMonth"><input id="company" placeholder="Company"><input type="number" id="salAmount" placeholder="Salary amount"><input id="salRemarks" placeholder="Remarks"></div>
+   <div class="grid"><input type="month" id="salMonth"><div style="position:relative">
+      <input id="company" list="companyList" placeholder="Company (type new or select existing)" autocomplete="off">
+      <datalist id="companyList"></datalist>
+    </div><input type="number" id="salAmount" placeholder="Salary amount"><input id="salRemarks" placeholder="Remarks"></div>
    <div class="actions"><button class="btn" onclick="addSalary()">Save Salary</button></div>
   </div>
   <div class="panel">
@@ -175,7 +178,77 @@ function renderDashboard(){
  dashboardLoans.innerHTML=loans.map(l=>`<div class="recent"><div><b>${l.name}</b><div class="smallText">Paid ${money(paid(l.id))} of ${money(l.initial)}</div></div><b>${money(balance(l.id))}</b></div>`).join("")||'<div class="smallText">No loans added.</div>';
 }
 async function addSalary(){try{const d={month:salMonth.value,company:company.value.trim(),amount:Number(salAmount.value),remarks:salRemarks.value.trim()};if(!d.month||!d.company||!d.amount)return alert("Enter month, company and amount");await api("save_salary",{data:d});salary.push({...d,id:String(Date.now())});renderAll();salAmount.value="";salRemarks.value="";setTimeout(()=>load(true),400);alert("Salary saved successfully ✓")}catch(e){setStatus("⚠ Save failed");alert("Salary save error: "+e.message)}}
-function renderSalary(){let f=companyFilter.value,data=salary.filter(x=>!f||x.company===f),total=data.reduce((s,x)=>s+Number(x.amount||0),0);salaryBody.innerHTML=data.map(x=>`<tr><td>${month(x.month)}</td><td>${x.company}</td><td>${money(x.amount)}</td><td>${x.remarks||"-"}</td><td><button class="btn danger small" onclick="delSalary('${x.id}')">Delete</button></td></tr>`).join("")||'<tr><td colspan="5">No salary records</td></tr>';totalSalary.textContent=money(total);salaryCount.textContent=data.length;avgSalary.textContent=money(data.length?total/data.length:0);latestSalary.textContent=money(data.length?data[data.length-1].amount:0);companyFilter.innerHTML='<option value="">All Companies</option>'+[...new Set(salary.map(x=>x.company))].map(x=>`<option ${x===f?"selected":""}>${x}</option>`).join("")}
+function renderSalary(){
+  // Keep current selections before rebuilding dropdowns.
+  const filterValue = companyFilter.value || "";
+  const companyValue = company.value || "";
+
+  // Unique companies from saved salary records.
+  const companies = [...new Set(
+    salary
+      .map(x => String(x.company || "").trim())
+      .filter(Boolean)
+  )].sort((a,b)=>a.localeCompare(b));
+
+  // Add Salary company dropdown suggestions.
+  companyList.innerHTML = companies
+    .map(c => `<option value="${escapeHtml(c)}"></option>`)
+    .join("");
+
+  // Company filter dropdown.
+  companyFilter.innerHTML =
+    '<option value="">All Companies</option>' +
+    companies.map(c =>
+      `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`
+    ).join("");
+
+  // Restore selected filter if it still exists.
+  companyFilter.value = companies.includes(filterValue) ? filterValue : "";
+
+  // Restore typed company value.
+  if (companyValue) company.value = companyValue;
+
+  const selected = companyFilter.value;
+  const data = salary.filter(x =>
+    !selected || String(x.company || "") === selected
+  );
+
+  const total = data.reduce(
+    (sum, x) => sum + Number(x.amount || 0),
+    0
+  );
+
+  salaryBody.innerHTML = data.map(x => `
+    <tr>
+      <td>${month(x.month)}</td>
+      <td>${escapeHtml(x.company || "")}</td>
+      <td>${money(x.amount)}</td>
+      <td>${escapeHtml(x.remarks || "-")}</td>
+      <td>
+        <button class="btn danger small"
+          onclick="delSalary('${x.id}')">
+          Delete
+        </button>
+      </td>
+    </tr>
+  `).join("") || '<tr><td colspan="5">No salary records</td></tr>';
+
+  totalSalary.textContent = money(total);
+  salaryCount.textContent = data.length;
+  avgSalary.textContent = money(data.length ? total / data.length : 0);
+  latestSalary.textContent = money(
+    data.length ? data[data.length - 1].amount : 0
+  );
+}
+
+function escapeHtml(value){
+  return String(value ?? "")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#039;");
+}
 function clearCompany(){companyFilter.value="";renderSalary()}
 async function delSalary(id){if(!confirm("Delete salary?"))return;try{await api("delete_salary",{id});salary=salary.filter(x=>x.id!==id);renderAll();setTimeout(()=>load(true),400)}catch(e){alert(e.message)}}
 async function addLoan(){try{const d={name:loanName.value.trim(),initial:Number(loanAmount.value),remarks:loanRemarks.value.trim()};if(!d.name||!d.initial)return alert("Enter loan name and amount");await api("save_loan",{data:d});loanName.value=loanAmount.value=loanRemarks.value="";await load(true);alert("Loan added successfully ✓")}catch(e){alert("Loan save error: "+e.message)}}
